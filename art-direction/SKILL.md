@@ -59,6 +59,24 @@ Before asking anything, read the available brand and style context.
 BRAND_DNA="$HOME/.gstack-dev/plans/brand/BRAND-DNA.md"
 [ -f "$BRAND_DNA" ] && echo "BRAND_DNA: found" || echo "BRAND_DNA: missing"
 
+# Experience Grammar (shared interaction patterns)
+EXP_GRAMMAR="$HOME/.gstack-dev/plans/brand/EXPERIENCE-GRAMMAR.md"
+[ -f "$EXP_GRAMMAR" ] && echo "EXPERIENCE_GRAMMAR: found" || echo "EXPERIENCE_GRAMMAR: missing"
+
+# Art Style Library
+ART_STYLES_DIR="$HOME/.gstack-dev/plans/brand/art-styles"
+if [ -d "$ART_STYLES_DIR" ]; then
+  STYLE_COUNT=$(ls "$ART_STYLES_DIR"/*.md 2>/dev/null | grep -v README | wc -l | tr -d ' ')
+  echo "ART_STYLES: $STYLE_COUNT styles in library"
+  ls "$ART_STYLES_DIR"/*.md 2>/dev/null | grep -v README | while read f; do
+    NAME=$(grep '^name:' "$f" | head -1 | sed 's/name: //')
+    STATUS=$(grep '^status:' "$f" | head -1 | sed 's/status: //')
+    echo "  STYLE: $NAME ($STATUS)"
+  done
+else
+  echo "ART_STYLES: library not found"
+fi
+
 # Project style guide
 REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo "")
 STYLE_GUIDE=""
@@ -85,10 +103,12 @@ done
 
 **After running:**
 
-1. If `BRAND_DNA: found`, read it with the Read tool. Use it as context throughout.
-2. If `STYLE_GUIDE: found`, read it with the Read tool. This is the primary style reference.
-3. If both are missing, note this — you'll help the creator establish both during the session.
-4. If `DRAFT_COUNT > 0`, offer to resume (same pattern as /game-design resume detection).
+1. If `BRAND_DNA: found`, read it with the Read tool. Pay particular attention to the **Invariants** table and **Market Research Grounding** section — these inform every stage.
+2. If `EXPERIENCE_GRAMMAR: found`, read it. Know the six patterns (Reveal, Assembly, Collect, Present, Confirm, Anticipate) — you'll reference them in Stage 1 and Stage 6.
+3. If `ART_STYLES` shows styles in library, note the names and statuses — you'll offer them as named choices in Stage 4 instead of generating prompts from scratch.
+4. If `STYLE_GUIDE: found`, read it with the Read tool. This is the primary per-app style reference.
+5. If BRAND_DNA and STYLE_GUIDE are both missing, note this — you'll help the creator establish both during the session.
+6. If `DRAFT_COUNT > 0`, offer to resume (same pattern as /game-design resume detection).
 
 If a `/game-design` output file exists in the project (look for `game-design-*.md` in the project slug dir):
 
@@ -274,16 +294,57 @@ For each asset in `asset_spec`, generate:
 3. **Recommended model** — from the list below
 4. **Batch size** — 8 variants unless the user specifies otherwise
 
-### Model selection guide
+### Portrait / Likeness Assets — Use the Art Style Library
+
+**For any asset involving a person's face, always choose from the named styles in the art-styles catalog.** Do not generate portrait prompts from scratch — tested styles with known identity fidelity exist.
+
+Read the matching style file from `~/.gstack-dev/plans/brand/art-styles/` and use its exact prompt, model, and parameters.
+
+| Style | File | Identity | Best for | Watch out for |
+|-------|------|----------|---------|---------------|
+| Noir Detective | `noir-detective-v1.md` | 4/5 | Dossier inserts, header art, B&W character sheets | Defaults to B&W photorealistic (not illustrated). Heavy shadow + B&W reads **sad and old**, not theatrical and fun. For warm, playful murder mystery vibes, use Art Nouveau or Art Deco instead. Only use Noir when the B&W press-photo look is intentional. |
+| Victorian Engraving | `victorian-engraving-v1.md` | 4/5 | murder-at-yours dossier docs, archival apps | |
+| Art Nouveau | `art-nouveau-v1.md` | 4/5 | murder-at-yours portrait cards (confirmed winner), elegant apps | Cream backgrounds are the wrong execution — prompt must explicitly specify dark background and jewel-tone palette. |
+| Classical Oil Portrait | `oil-portrait-v1.md` | 5/5 | Universal premium — works for all apps | |
+| Graphic Novel | `graphic-novel-v1.md` | 4/5 | TCG/games, younger audiences, modern apps | |
+
+**On Noir for party/social apps:** Standard noir direction (heavy shadow, B&W, brooding) is the wrong emotional register for apps where the goal is fun, flirty, or celebratory. If the brief calls for upbeat energy, steer toward Art Nouveau (warm gold, painterly, collectible), Art Deco (bold geometric, gold on black, confident), or Pulp (energetic, color, kinetic). Reserve Noir for dossier/document surfaces where a moodier tone is appropriate.
+
+**Styles to never use for likeness:** Anime/manga (~1/5 identity), impressionist (~2/5), cubist (~1/5), heavy watercolor (~2/5).
+
+Ask:
+
+> **Which portrait style for this brief?**
+> [List the approved styles with their identity score and app fit from the catalog]
+>
+> Or: use a style not in the catalog yet — I'll generate a new prompt, but it won't have tested identity scores. Add it to the catalog after testing.
+
+### Non-Portrait Asset Model Selection
 
 | Asset type | Recommended Replicate model | Notes |
 |-----------|----------------------------|-------|
 | Marketing photography / scene | `black-forest-labs/flux-pro` | Best photorealistic quality |
 | Fast iteration / concept | `black-forest-labs/flux-schnell` | 4-step, cheap, good for batching |
-| Character portraits / faces | `stability-ai/sdxl` or `fofr/face-to-sticker` | SDXL for stylized; check murder-at-yours for existing working config |
-| Product mockups | `black-forest-labs/flux-pro` | |
-| Illustrated / artistic | `stability-ai/sdxl` with LoRA | |
+| Product mockups / lifestyle shots | `black-forest-labs/flux-pro` | |
+| Illustrated / artistic (no face) | `stability-ai/sdxl` | |
 | Logo / icon | Human designer or vector — do NOT use diffusion | Diffusion models don't produce clean vectors |
+
+### Global Negative Prompts — Always Applied
+
+**Every prompt config, regardless of asset type or style, must include this base negative string.** Append it to all negative prompts before saving configs — never omit it:
+
+```
+no text, no words, no letters, no writing, no labels, no typography, no brand names,
+no watermarks, no signatures, no captions, no titles, no subtitles, no inscriptions
+```
+
+**Why this is non-negotiable:** Diffusion models hallucinate plausible-looking text whenever a prompt touches objects that typically carry text (envelopes, boxes, dossiers, wax seals, emblems, bottles, books). The hallucinated text is always wrong — either gibberish or an existing brand name — and fixing it after generation costs a full re-run. The negative is cheap and prevents the problem entirely.
+
+For circular emblem / seal designs specifically, also add:
+```
+no circular text, no ring of letters, no text around border, no inscribed motto
+```
+Circular text around emblems is the hardest hallucination to suppress — even with strong negatives, faint ring text sometimes appears. If it persists after two re-prompts, composite a clean vector logo over the seal in production rather than fighting the model further.
 
 Ask:
 
@@ -352,8 +413,30 @@ After critique, ask:
 **Write to draft file:** `selected_assets` with filename, scores, and brief rationale.
 **Update brief file "Selection Notes" section.**
 
-**If no variant scores above 6:**
-Ask: "Nothing's landing. Let's diagnose — which of the four criteria is failing most? We'll adjust the prompt and re-run a tighter batch."
+**If no variant scores above 6, OR the user wants to improve a specific asset:**
+
+### Stage 5b — Reprompt Loop
+
+The gallery at `{REPO_ROOT}/docs/assets/{campaign}/gallery.html` is the visual review surface. Tell the user to open it, look at the cards, and point at what's wrong. Then diagnose and fix.
+
+**Failure → Fix mapping:**
+
+| Criterion failing | What it usually means | Prompt fix |
+|---|---|---|
+| **Feeling** | Wrong emotional register, wrong palette temperature | Adjust style descriptors — warmer/cooler tones, energy words, mood references |
+| **Audience signal** | Too generic, could be for anyone | Add specificity to staging, props, or era that speaks to *this* audience |
+| **Action pull** | No focal point, nothing desirable in frame | Add a hero object, strengthen the composition anchor, increase drama of the reveal |
+| **Style fit** | Drifted from brief archetype | Re-read the style_anchor and check which terms are missing from the prompt |
+
+**Process:**
+1. User identifies the failing card(s) in the gallery
+2. Pull the original prompt for that asset from `{campaign}-prompt-configs.json`
+3. Identify the failing criterion and apply the matching fix above
+4. Generate a revised prompt — show the before/after diff so the user sees what changed
+5. Save revised config to `{campaign}-prompt-configs-v{N+1}.json` (don't overwrite — preserve history)
+6. Re-run only the failing asset — not the full batch
+
+**Re-run until the asset scores ≥ 9/12 or the user decides to move on.** Three re-prompt rounds is the limit before escalating: if something still isn't landing after 3 rounds, the issue is usually the brief (wrong emotional target or wrong style archetype), not the prompt.
 
 **Transition:** "Assets selected. Let's build the test plan."
 
@@ -390,7 +473,44 @@ For each selected surface, ask the minimum viable questions:
 
 **Write to draft file:** `test_plan` with surfaces, metrics, timeline.
 **Update brief file "Test Plan" section.**
-**Post brief to Discord reminder:** "Share the completed brief to #briefs and post results to #results after [date]."
+
+### Generate Survey + Gallery (always — not optional)
+
+Regardless of which surfaces the user selected, always generate two HTML files as part of Stage 6 completion:
+
+**1. Gallery** at `{REPO_ROOT}/docs/assets/{campaign}/gallery.html`
+
+The gallery is the visual review surface used throughout Stage 5b. If it doesn't exist yet, generate it now from the selected_assets in the draft file. Structure:
+- Dark background matching the project's STYLE-GUIDE.md palette (default: `#0f0e0c` bg, `#C9A84C` gold, `#F5EDD8` text)
+- All portrait style variants in a 6-up comparison strip at the top (even single-variant styles)
+- Individual sections per style below, with the confirmed winner styled with a gold border glow
+- Scene assets in a 2-column grid — production-ready only (no "replaced" originals)
+- CSS foil shimmer on card hover (::before gradient translateX)
+- Status badges: "Winner" (gold), "Select" (muted gold), "Re-prompt" (amber)
+
+**2. Survey** at `{REPO_ROOT}/docs/assets/{campaign}/survey.html`
+
+The survey is how you collect team votes before committing to a portrait style. Generate it as a self-contained HTML file (no server required — submits by copying results to clipboard). Structure:
+
+- **Q1: Best portrait** — image card grid, one per portrait style variant. Cards are selectable via `<input type="radio">` + CSS. Show all portrait variants from `selected_assets`.
+- **Q2: Rate all styles** — one row per portrait style, 5-star rating using the CSS row-reverse hover trick (no JS required).
+- **Q3: Strongest scene asset** — image card grid, one per scene asset.
+- **Q4: What's missing** — `<textarea>` for open feedback.
+- **Q5: Name** — text input (optional).
+- **Submit** — formats results as a Discord-paste-ready block, copies to clipboard via `navigator.clipboard.writeText()`, shows a "Copied!" confirmation.
+
+Use the project palette throughout. Images load from `raw/portraits/` and `raw/scenes/` via relative paths — the survey must be served alongside the assets folder to work (it won't open as a standalone file).
+
+**How to share the survey with your team:**
+
+The survey references images via relative paths, so it needs to be served with the assets folder alongside it. Two options:
+
+- **Netlify Drop** (fastest, no account needed): Go to `netlify.com/drop` and drag the entire `docs/assets/{campaign}/` folder onto the page. You get a live shareable URL in ~10 seconds.
+- **GitHub Pages** (permanent URL): Commit and push `docs/assets/` to the branch. Enable Pages in repo Settings → Pages → Source: your branch, folder: `/docs`. URL becomes `{username}.github.io/{repo}/assets/{campaign}/survey.html`.
+
+Tell the user both options and suggest Netlify Drop for immediate sharing.
+
+**Post brief to Discord reminder:** "Share the survey to #briefs and post results to #results after [date]."
 
 ---
 
@@ -403,6 +523,8 @@ Summarize what was produced:
 ✓ Prompt configs:   {REPO_ROOT}/docs/briefs/{campaign}-prompt-configs.json
 ✓ Draft file:       ~/.gstack/projects/{GSTACK_SLUG}/art-direction-draft-{campaign}-{datetime}.md
 ✓ Style guide:      {REPO_ROOT}/docs/STYLE-GUIDE.md (updated if changed)
+✓ Gallery:          {REPO_ROOT}/docs/assets/{campaign}/gallery.html
+✓ Survey:           {REPO_ROOT}/docs/assets/{campaign}/survey.html
 ```
 
 If no STYLE-GUIDE.md existed before this session, offer to create one now:
